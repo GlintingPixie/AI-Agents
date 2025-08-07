@@ -112,7 +112,7 @@ weather_tool = StructuredTool.from_function(
 
 # ----- Tools (Calculator + Wikipedia + Web Search + Currency Converter + Weather) ----------
 tools = load_tools(["llm-math", "wikipedia", "serpapi"], llm=llm)
-tools += [currency_tool,weather_tool,time_tool]
+tools += [currency_tool,weather_tool]
 
 
 # ---------- Smarter Memory (Summary-based) ----------
