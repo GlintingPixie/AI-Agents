@@ -4,7 +4,7 @@ from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain.agents import AgentType
 from langchain.memory import ConversationSummaryMemory
 from langchain.tools import StructuredTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import os
 import requests
 from dotenv import load_dotenv
@@ -32,6 +32,14 @@ class CurrencyInput(BaseModel):
     amount: float = Field(..., description="Amount to convert")
     from_currency: str = Field(..., description="3-letter currency code to convert from (e.g., USD, INR, EUR)")
     to_currency: str = Field(..., description="3-letter currency code to convert to (e.g., USD, INR, EUR)")
+
+    @field_validator('from_currency', 'to_currency')
+    @classmethod
+    def check_currency_code(cls, v):
+        v = v.strip().upper()
+        if len(v) != 3 or not v.isalpha():
+            raise ValueError("Currency codes must be 3-letter alphabetical codes like USD or INR.")
+        return v
 
 # Preprocessing layer for informal phases
 SLANG_TO_CURRENCY = {
@@ -70,6 +78,19 @@ def currency_converter_pydantic(amount: float, from_currency: str, to_currency: 
             return f"Conversion rate for {to_currency.upper()} not available."
     return "API Error: Could not fetch conversion rate."
 
+def currency_converter_logged(*args, **kwargs):
+    print("🛠️ [Currency Tool] Called with:", args, kwargs)
+    result = currency_converter_pydantic(*args, **kwargs)
+    print("✅ [Currency Tool] Result:", result)
+    return result
+
+currency_tool = StructuredTool.from_function(
+    func=currency_converter_logged,
+    name="currency_converter",  # <--- must be a string name
+    args_schema=CurrencyInput,
+    description="Converts currency using live rates. Provide amount, from_currency, and to_currency. Example: {\"amount\": 100, \"from_currency\": \"USD\", \"to_currency\": \"INR\"}"
+)
+
 # Weather function
 def get_weather(city: str) -> str:
     """
@@ -83,13 +104,6 @@ def get_weather(city: str) -> str:
     except:
         return "Error: Unable to get weather."
 
-currency_tool = StructuredTool.from_function(
-    func=currency_converter_pydantic,
-    name="currency_converter",  # <--- must be a string name
-    args_schema=CurrencyInput,
-    description="Converts currency using live rates. Provide amount, from_currency, and to_currency. Example: {\"amount\": 100, \"from_currency\": \"USD\", \"to_currency\": \"INR\"}"
-)
-
 weather_tool = StructuredTool.from_function(
     func=get_weather,
     name="weather_checker",
@@ -98,11 +112,16 @@ weather_tool = StructuredTool.from_function(
 
 # ----- Tools (Calculator + Wikipedia + Web Search + Currency Converter + Weather) ----------
 tools = load_tools(["llm-math", "wikipedia", "serpapi"], llm=llm)
-tools += [currency_tool,weather_tool]
+tools += [currency_tool,weather_tool,time_tool]
 
 
 # ---------- Smarter Memory (Summary-based) ----------
-memory = ConversationSummaryMemory(llm=llm, memory_key="chat_history",return_messages=True)
+memory = ConversationSummaryMemory(
+    llm=llm, 
+    memory_key="chat_history",
+    return_messages=True,
+    input_key = "input"
+)
 
 # 4. Create the agent
 agent = initialize_agent(
