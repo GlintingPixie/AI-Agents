@@ -2,8 +2,9 @@ from langchain_openai import AzureChatOpenAI
 from langchain.agents import initialize_agent
 from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain.agents import AgentType
-from langchain.memory import ConversationSummaryMemory
+from langchain.memory import ConversationBufferMemory
 from langchain.tools import StructuredTool
+from langchain.schema.messages import SystemMessage
 from pydantic import BaseModel, Field, field_validator
 import os
 import requests
@@ -24,7 +25,10 @@ llm = AzureChatOpenAI(
     temperature=0,
     api_key=api_key,
     azure_endpoint =azure_endpoint,
-    api_version=api_version
+    api_version=api_version,
+    model_kwargs = {
+        "messages": [{"role": "system", "content": "You are a helpful assistant. Always try to understand informal terms like 'bucks' as USD or 'down under' as AUD when converting currencies."}]
+    }
 )
 
 # Input Class for Currency Converter function
@@ -40,6 +44,13 @@ class CurrencyInput(BaseModel):
         if len(v) != 3 or not v.isalpha():
             raise ValueError("Currency codes must be 3-letter alphabetical codes like USD or INR.")
         return v
+    
+    @field_validator('amount')
+    @classmethod
+    def check_amount(cls,a):
+        if a < 0:
+            raise ValueError("Amount should be positive")
+        return a
 
 # Preprocessing layer for informal phases
 SLANG_TO_CURRENCY = {
@@ -84,11 +95,14 @@ def currency_converter_logged(*args, **kwargs):
     print("✅ [Currency Tool] Result:", result)
     return result
 
+def handle_currency_errors(error: Exception) -> str:
+    return f"⚠️ Oops! There was an error: {str(error)}. Please try again with correct inputs."
 currency_tool = StructuredTool.from_function(
     func=currency_converter_logged,
     name="currency_converter",  # <--- must be a string name
     args_schema=CurrencyInput,
-    description="Converts currency using live rates. Provide amount, from_currency, and to_currency. Example: {\"amount\": 100, \"from_currency\": \"USD\", \"to_currency\": \"INR\"}"
+    description="Converts currency using live rates. Provide amount, from_currency, and to_currency. Example: {\"amount\": 100, \"from_currency\": \"USD\", \"to_currency\": \"INR\"}",
+    handle_tool_error = handle_currency_errors
 )
 
 # Weather function
@@ -116,11 +130,18 @@ tools += [currency_tool,weather_tool]
 
 
 # ---------- Smarter Memory (Summary-based) ----------
-memory = ConversationSummaryMemory(
+memory = ConversationBufferMemory(
     llm=llm, 
     memory_key="chat_history",
     return_messages=True,
     input_key = "input"
+)
+system_msg = SystemMessage(
+    content="You are a helpful and precise assistant with access to tools like currency conversion, weather, calculator, and web search. "
+        "Always use tools when available to answer factual questions. "
+        "Be concise and friendly. Round currency values to two decimal places. "
+        "Use metric units where applicable (e.g., Celsius instead of Fahrenheit). "
+        "If you're unsure about something or data isn't available, say so honestly rather than guessing."
 )
 
 # 4. Create the agent
@@ -131,7 +152,10 @@ agent = initialize_agent(
     verbose=True,
     memory = memory,
     handle_parsing_errors = True,
-    allow_dangerous_tools = True
+    allow_dangerous_tools = True,
+    agent_kwargs= {
+        "system_message":system_msg
+    }
 )
 
 # ---------- Conversation Loop ----------
