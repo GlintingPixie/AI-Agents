@@ -16,7 +16,7 @@ azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
 api_key=os.getenv("AZURE_OPENAI_API_KEY")
 api_version=os.getenv('AZURE_OPENAI_API_VERSION')
 deployment_name = os.getenv('AZURE_OPENAI_DEPLOYMENT_NAME')
-serp_api_key  = os.getenv('SERP_API_KEY')
+serp_api_key  = os.getenv('SERPAPI_API_KEY')
 os.environ["SERPAPI_API_KEY"] = serp_api_key
 
 # Create the model
