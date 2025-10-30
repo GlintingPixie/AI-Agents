@@ -42,3 +42,4 @@ prompt = template.invoke({
 if st.button("Answer"):
     result = model.invoke(prompt)
     st.write(result.content)
+    
