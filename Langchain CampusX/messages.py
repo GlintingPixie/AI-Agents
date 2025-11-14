@@ -25,6 +25,6 @@ messages = [
 ]
 
 result = model.invoke(messages)
-messages.append(SystemMessage(content = result.content))
+messages.append(AIMessage(content = result.content))
 
 print(messages)
